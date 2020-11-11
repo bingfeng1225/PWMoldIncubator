@@ -233,7 +233,7 @@ class MoldIncubatorSerialPort implements PWSerialPortListener {
             if(command == 0x10) {
                 lenth = 8;
             } else {
-                lenth = 5 + 0xFF & this.buffer.getByte(2);
+                lenth = 5 + (0xFF & this.buffer.getByte(2));
             }
             if (this.buffer.readableBytes() < lenth) {
                 break;
