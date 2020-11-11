@@ -229,13 +229,16 @@ class MoldIncubatorSerialPort implements PWSerialPortListener {
                 }
             }
 
-            int lenth = 0xFF & this.buffer.getByte(2);
-
-            if (this.buffer.readableBytes() < lenth + 5) {
+            int lenth = 0;
+            if(command == 0x10) {
+                lenth = 8;
+            } else {
+                lenth = 5 + 0xFF & this.buffer.getByte(2);
+            }
+            if (this.buffer.readableBytes() < lenth) {
                 break;
             }
-
-            byte[] data = new byte[lenth + 5];
+            byte[] data = new byte[lenth];
             this.buffer.readBytes(data, 0, data.length);
             this.buffer.discardReadBytes();
             this.loggerPrint("MoldIncubatorSerialPort Recv:" + MoldIncubatorTools.bytes2HexString(data, true, ", "));
