@@ -82,7 +82,7 @@ class MoldIncubatorSerialPort implements PWSerialPortListener {
     private void createHelper(String path) {
         if (this.helper == null) {
             this.helper = new PWSerialPortHelper("MoldIncubatorSerialPort");
-            this.helper.setTimeout(9);
+            this.helper.setTimeout(5);
             this.helper.setPath(path);
             this.helper.setBaudrate(9600);
             this.helper.init(this);
@@ -161,12 +161,36 @@ class MoldIncubatorSerialPort implements PWSerialPortListener {
                 this.buffer.readBytes(data, 0, data.length);
                 this.buffer.discardReadBytes();
                 this.loggerPrint("MoldIncubatorSerialPort 指令丢弃:" + MoldIncubatorTools.bytes2HexString(data, true, ", "));
-                return true;
+                return this.processBytesBuffer();
             }
         }
         return false;
     }
 
+    private boolean processBytesBuffer() {
+        if (this.buffer.readableBytes() < 3) {
+            return true;
+        }
+        byte header = this.buffer.getByte(0);
+        byte command = this.buffer.getByte(1);
+        if (!MoldIncubatorTools.checkHeader(header) || !MoldIncubatorTools.checkCommand(command)) {
+            return this.ignorePackage();
+        }
+
+        int lenth = (command == 0x10) ? 8 : (5 + (0xFF & this.buffer.getByte(2)));
+        if (this.buffer.readableBytes() < lenth) {
+            return true;
+        }
+        byte[] data = new byte[lenth];
+        this.buffer.readBytes(data, 0, data.length);
+        this.buffer.discardReadBytes();
+        this.loggerPrint("MoldIncubatorSerialPort Recv:" + MoldIncubatorTools.bytes2HexString(data, true, ", "));
+        this.switchWriteModel();
+        if (null != this.listener && null != this.listener.get()) {
+            this.listener.get().onMoldIncubatorPackageReceived(data);
+        }
+        return true;
+    }
 
     @Override
     public void onConnected(PWSerialPortHelper helper) {
@@ -211,42 +235,12 @@ class MoldIncubatorSerialPort implements PWSerialPortListener {
     }
 
     @Override
-    public void onByteReceived(PWSerialPortHelper helper, byte[] buffer, int length) throws IOException {
+    public boolean onByteReceived(PWSerialPortHelper helper, byte[] buffer, int length) throws IOException {
         if (!this.isInitialized() || !helper.equals(this.helper)) {
-            return;
+            return false;
         }
         this.buffer.writeBytes(buffer, 0, length);
-
-        while (this.buffer.readableBytes() >= 3) {
-            byte header = this.buffer.getByte(0);
-            byte command = this.buffer.getByte(1);
-
-            if (!MoldIncubatorTools.checkHeader(header) || !MoldIncubatorTools.checkCommand(command)) {
-                if (this.ignorePackage()) {
-                    continue;
-                } else {
-                    break;
-                }
-            }
-
-            int lenth = 0;
-            if(command == 0x10) {
-                lenth = 8;
-            } else {
-                lenth = 5 + (0xFF & this.buffer.getByte(2));
-            }
-            if (this.buffer.readableBytes() < lenth) {
-                break;
-            }
-            byte[] data = new byte[lenth];
-            this.buffer.readBytes(data, 0, data.length);
-            this.buffer.discardReadBytes();
-            this.loggerPrint("MoldIncubatorSerialPort Recv:" + MoldIncubatorTools.bytes2HexString(data, true, ", "));
-            this.switchWriteModel();
-            if (null != this.listener && null != this.listener.get()) {
-                this.listener.get().onMoldIncubatorPackageReceived(data);
-            }
-        }
+        return this.processBytesBuffer();
     }
 
     private class IncubatorHandler extends Handler {
